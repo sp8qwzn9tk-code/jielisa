@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Population Dashboard — Динамика численности населения (последние 10 лет)</title>
+
+  <!-- Google Charts (для карты) -->
+  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+  <!-- Chart.js (для графиков) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#0f1724;
+      --card:#0b1220;
+      --accent:#4f46e5;
+      --muted:#94a3b8;
+      --glass: rgba(255,255,255,0.03);
+    }
+    html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;background:linear-gradient(180deg,#071023 0%, #071526 60%);color:#e6eef8}
+    .container{max-width:1200px;margin:20px auto;padding:20px;display:grid;grid-template-columns:1fr 420px;gap:18px}
+    header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    h1{margin:0;font-size:20px}
+    .subtitle{color:var(--muted);font-size:13px}
+    .card{background:var(--card);border-radius:10px;padding:14px;box-shadow:0 6px 20px rgba(2,6,23,0.6);border:1px solid rgba(255,255,255,0.03)}
+    .left{display:flex;flex-direction:column;gap:12px}
+    .top-row{display:flex;gap:12px}
+    .controls{display:flex;flex-direction:column;gap:8px}
+    select,input{background:var(--glass);border:1px solid rgba(255,255,255,0.03);padding:8px;border-radius:8px;color:#e6eef8}
+    .small{font-size:13px;color:var(--muted)}
+    #map_div{height:420px;width:100%}
+    .charts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    canvas{background:transparent;border-radius:8px}
+    .right{display:flex;flex-direction:column;gap:12px}
+    .meta{display:flex;gap:12px;align-items:center}
+    .btn{background:linear-gradient(90deg,var(--accent),#06b6d4);border:none;padding:8px 12px;border-radius:8px;color:white;cursor:pointer}
+    footer{grid-column:1/-1;color:var(--muted);font-size:12px;margin-top:6px;padding-left:4px}
+    @media (max-width:1000px){
+      .container{grid-template-columns:1fr; padding:12px}
+      #map_div{height:320px}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Population Dashboard — динамика населения (последние 10 лет)</h1>
+        <div class="subtitle">Данные — World Bank (indicator: SP.POP.TOTL). Интерактив: выбор страны, год, карта и графики.</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="small">Последние 10 лет: <span id="years-range" class="small"></span></div>
+        <button id="playBtn" class="btn">Play</button>
+      </div>
+    </header>
+
+    <div class="left">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div class="small">Выберите страну</div>
+            <select id="countrySelect" style="min-width:260px"></select>
+          </div>
+          <div>
+            <div class="small">Выберите год (карта / топ-10)</div>
+            <select id="yearSelect"></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="mapCard">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div><strong>Хлороплет-карта — население по странам</strong><div class="small">на выбранный год</div></div>
+          <div class="small" id="mapLegend"></div>
+        </div>
+        <div id="map_div"></div>
+      </div>
+
+      <div class="card charts">
+        <div>
+          <div class="small">Тренд по выбранной стране</div>
+          <canvas id="lineChart" height="220"></canvas>
+        </div>
+        <div>
+          <div class="small">Топ-10 стран по населению (выбранный год)</div>
+          <canvas id="barChart" height="220"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <aside class="right">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div class="small">Текущая страна</div>
+            <div id="countryName" style="font-weight:600">—</div>
+            <div class="small" id="countryPopLatest">—</div>
+          </div>
+          <div>
+            <div class="small">Изменение за 10 лет</div>
+            <div id="delta10" style="font-weight:600">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="small">Информация</div>
+        <ul class="small" style="margin:8px 0 0 16px;line-height:1.6">
+          <li>Источник: World Bank API — SP.POP.TOTL</li>
+          <li>Автоматическое обновление: при перезагрузке страницы</li>
+          <li>Открытый код: можно встраивать и дорабатывать</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="small">Советы</div>
+        <ol class="small" style="margin:8px 0 0 16px;line-height:1.6">
+          <li>Можно добавить сохранение localStorage для любимых стран</li>
+          <li>Для более детальной карты — использовать topojson + d3</li>
+        </ol>
+      </div>
+    </aside>
+
+    <footer>
+      Сгенерировано автоматически — используйте осторожно для аналитики (проверяйте периоды и источники).
+    </footer>
+  </div>
+
+  <script>
+  // ========== Конфигурация ==========
+  const INDICATOR = 'SP.POP.TOTL';
+  const WB_API_BASE = 'https://api.worldbank.org/v2';
+  // вычислим динамически последние 10 лет (включительно текущий год)
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const YEARS_COUNT = 10;
+  const years = [];
+  for(let i = YEARS_COUNT-1; i >= 0; i--){
+    years.push(currentYear - i);
+  }
+  document.getElementById('years-range').textContent = years[0] + ' — ' + years[YEARS_COUNT-1];
+
+  // Заполним селект годов
+  const yearSelect = document.getElementById('yearSelect');
+  years.slice().reverse().forEach(y=>{
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    yearSelect.appendChild(opt);
+  });
+  yearSelect.value = years[YEARS_COUNT-1];
+
+  // ========= Глобальные state =========
+  let countriesList = []; // {id: 'USA', name: 'United States', region: {...}}
+  let populationDataByCountry = {}; // { "USA": { "2020": 331002651, ... }, ... }
+  let geoChart; // google geo chart
+  let lineChart, barChart;
+  let playInterval = null;
+
+  // ========= Инициализация Google Charts =========
+  google.charts.load('current', {
+    'packages':['geochart'],
+    // mapsApiKey можем не указывать — хлороплет работает без ключа
+  });
+
+  // ========= Утилиты для World Bank =========
+  async function fetchJSON(url){
+    const r = await fetch(url);
+    if(!r.ok) throw new Error('Network error: ' + r.status);
+    return r.json();
+  }
+
+  // Получить список стран (код + название)
+  async function loadCountries(){
+    // per_page=300, format=json
+    const url = `${WB_API_BASE}/country?per_page=300&format=json`;
+    const data = await fetchJSON(url);
+    // data[1] содержит список стран
+    const items = data[1];
+    countriesList = items.filter(c => c.region && c.region.id !== 'NA' || true).map(c => ({
+      id: c.id,
+      name: c.name,
+      region: c.region,
+      iso2Code: c.iso2Code
+    }));
+    countriesList.sort((a,b)=> a.name.localeCompare(b.name));
+    // заполним select
+    const sel = document.getElementById('countrySelect');
+    sel.innerHTML = '';
+    countriesList.forEach(c=>{
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.name + ' (' + c.id + ')';
+      sel.appendChild(opt);
+    });
+    // установим дефолт: World или Russia если есть
+    const defaultId = countriesList.find(x=>x.id==='RUS') ? 'RUS' : (countriesList[0] && countriesList[0].id);
+    sel.value = defaultId;
+    return countriesList;
+  }
+
+  // Загрузить данные по индикатору для всех стран и нужного диапазона годов
+  async function loadPopulationData(){
+    const start = years[0];
+    const end = years[YEARS_COUNT-1];
+    // Запросируем за диапазон; per_page большой чтобы вернуть все
+    const url = `${WB_API_BASE}/country/all/indicator/${INDICATOR}?date=${start}:${end}&format=json&per_page=20000`;
+    const json = await fetchJSON(url);
+    // json[1] - массив записей {country: {id,name}, date, value}
+    const records = json[1] || [];
+    populationDataByCountry = {};
+    records.forEach(rec=>{
+      const code = rec.country && rec.country.id;
+      if(!code) return;
+      if(!populationDataByCountry[code]) populationDataByCountry[code] = {};
+      populationDataByCountry[code][rec.date] = rec.value; // value может быть null
+    });
+    return populationDataByCountry;
+  }
+
+  // ========= Визуализации =========
+
+  // Инициализация Line Chart (Chart.js)
+  function initLineChart(){
+    const ctx = document.getElementById('lineChart').getContext('2d');
+    lineChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: years.map(String),
+        datasets: [{
+          label: 'Население',
+          data: years.map(_=>null),
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        plugins:{legend:{display:false}},
+        scales:{
+          y:{beginAtZero:false, ticks:{callback: value => formatNumber(value)}}
+        },
+        maintainAspectRatio:false
+      }
+    });
+  }
+
+  // Инициализация Bar Chart (Chart.js)
+  function initBarChart(){
+    const ctx = document.getElementById('barChart').getContext('2d');
+    barChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: [],
+        datasets:[{
+          label: 'Население',
+          data: [],
+          borderRadius:6
+        }]
+      },
+      options:{
+        plugins:{legend:{display:false}},
+        scales:{
+          y:{ticks:{callback: value => formatNumber(value)}}
+        },
+        maintainAspectRatio:false
+      }
+    });
+  }
+
+  // Обновление Line Chart для страны
+  function updateLineChart(countryId){
+    const dat = populationDataByCountry[countryId] || {};
+    const data = years.map(y => dat[String(y)] ?? null);
+    lineChart.data.datasets[0].data = data;
+    lineChart.data.datasets[0].label = countriesList.find(c=>c.id===countryId)?.name ?? countryId;
+    lineChart.update();
+  }
+
+  // Обновление Bar Chart для выбранного года
+  function updateBarChart(year){
+    // соберем пары [countryName, pop]
+    const arr = countriesList.map(c=>{
+      const v = (populationDataByCountry[c.id] && populationDataByCountry[c.id][String(year)]) ?? null;
+      return {id:c.id, name:c.name, value:v};
+    }).filter(x=>x.value != null);
+    arr.sort((a,b)=>b.value - a.value);
+    const top = arr.slice(0,10);
+    barChart.data.labels = top.map(x=>x.name);
+    barChart.data.datasets[0].data = top.map(x=>x.value);
+    barChart.update();
+  }
+
+  // Построить GeoChart (Google Charts)
+  function drawGeoChart(year){
+    const yearStr = String(year);
+    const rows = [['Country', 'Population']];
+    countriesList.forEach(c=>{
+      const v = (populationDataByCountry[c.id] && populationDataByCountry[c.id][yearStr]) ?? null;
+      // GeoChart требует либо код страны (ISO-2) либо имя
+      if(v != null){
+        // Используем ISO-2 если есть
+        rows.push([c.iso2Code || c.name, v]);
+      }
+    });
+    const dataTable = google.visualization.arrayToDataTable(rows);
+    const options = {
+      colorAxis: {colors: ['#e6f2ff', '#0369a1']},
+      backgroundColor: 'transparent',
+      legend: 'none',
+      datalessRegionColor: '#18202b',
+      defaultColor: '#bcd7f5',
+      tooltip: {textStyle:{color:'#000'}, showColorCode:false}
+    };
+    const el = document.getElementById('map_div');
+    geoChart = new google.visualization.GeoChart(el);
+    geoChart.draw(dataTable, options);
+  }
+
+  // ========= Вспомогательные =========
+  function formatNumber(n){
+    if(n === null || n === undefined) return '-';
+    if(n >= 1e9) return (n/1e9).toFixed(2) + 'B';
+    if(n >= 1e6) return (n/1e6).toFixed(2) + 'M';
+    if(n >= 1e3) return (n/1e3).toFixed(0) + 'k';
+    return n;
+  }
+
+  function updateMeta(countryId){
+    const name = countriesList.find(c=>c.id===countryId)?.name ?? countryId;
+    document.getElementById('countryName').textContent = name;
+    const dat = populationDataByCountry[countryId] || {};
+    const latestYear = String(years[YEARS_COUNT-1]);
+    const latest = dat[latestYear] ?? null;
+    document.getElementById('countryPopLatest').textContent = latest ? `Население (${latestYear}): ${latest.toLocaleString()}` : `Нет данных за ${latestYear}`;
+    // изменение за 10 лет: сравнить крайние годы
+    const firstY = String(years[0]);
+    const firstVal = dat[firstY] ?? null;
+    const deltaElem = document.getElementById('delta10');
+    if(latest != null && firstVal != null){
+      const diff = latest - firstVal;
+      const perc = (diff / firstVal) * 100;
+      deltaElem.textContent = (diff >= 0 ? '+' : '') + diff.toLocaleString() + ` (${perc.toFixed(1)}%)`;
+    } else {
+      deltaElem.textContent = '—';
+    }
+  }
+
+  // ========= Event handlers =========
+  document.getElementById('countrySelect').addEventListener('change', e=>{
+    const id = e.target.value;
+    updateLineChart(id);
+    updateMeta(id);
+  });
+  yearSelect.addEventListener('change', e=>{
+    const y = Number(e.target.value);
+    drawGeoChart(y);
+    updateBarChart(y);
+  });
+
+  document.getElementById('playBtn').addEventListener('click', ()=>{
+    const btn = document.getElementById('playBtn');
+    if(playInterval){
+      clearInterval(playInterval); playInterval = null; btn.textContent = 'Play';
+    } else {
+      btn.textContent = 'Stop';
+      let idx = 0;
+      playInterval = setInterval(()=>{
+        // перебираем страны по алфавиту
+        const country = countriesList[idx % countriesList.length];
+        document.getElementById('countrySelect').value = country.id;
+        document.getElementById('countrySelect').dispatchEvent(new Event('change'));
+        idx++;
+      }, 1200);
+    }
+  });
+
+  // ========= Запуск: загрузка данных и отрисовка =========
+  async function start(){
+    try{
+      // UI: покажем что идёт загрузка
+      const sel = document.getElementById('countrySelect');
+      sel.innerHTML = '<option>Загрузка...</option>';
+
+      await loadCountries();
+      await loadPopulationData();
+
+      // инициализируем графики
+      initLineChart();
+      initBarChart();
+
+      // установим текущее значение селекта в уже поставленное (или первое)
+      const currentCountry = sel.value || (countriesList[0] && countriesList[0].id);
+      // обновим line и meta
+      updateLineChart(currentCountry);
+      updateMeta(currentCountry);
+
+      // отрисуем карта и бар для дефолтного года
+      const defaultYear = Number(yearSelect.value);
+      google.charts.setOnLoadCallback(()=> drawGeoChart(defaultYear));
+      updateBarChart(defaultYear);
+
+      // перестроение карты при ресайзе (не часто)
+      window.addEventListener('resize', ()=> {
+        google.charts.setOnLoadCallback(()=> drawGeoChart(Number(yearSelect.value)));
+      });
+
+    } catch(err){
+      console.error(err);
+      alert('Ошибка при загрузке данных: ' + err.message + '\nПроверьте подключение к интернету и доступность World Bank API.');
+    }
+  }
+
+  start();
+
+  </script>
+</body>
+</html>
